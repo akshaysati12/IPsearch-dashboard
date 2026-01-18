@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Asset Discovery Portal</title>
+<script src="https://cdn.jsdelivr.net/npm/oboe@2.1.5/dist/oboe-browser.min.js"></script>
+
+<style>
+body{background:#0f172a;color:white;font-family:Arial;padding:40px}
+input,select,button{padding:8px;margin:5px;border-radius:6px;border:none}
+button{background:#6366f1;color:white;cursor:pointer}
+.filterRow{margin-bottom:6px}
+.filterRow button{background:#ef4444;margin-left:5px}
+table{width:100%;background:white;color:black;border-collapse:collapse}
+th,td{padding:8px;border:1px solid #ccc}
+th{background:#1e293b;color:white}
+#resultCount{color:#22d3ee;margin:10px 0;font-weight:bold}
+</style>
+</head>
+
+<body>
+
+<h2>Asset Discovery Portal</h2>
+
+<input type="file" id="jsonFile" accept=".json">
+<button onclick="loadJSON()">Load JSON</button>
+
+<div id="filters">
+  <div class="filterRow">
+    <select class="fType">
+      <option value="ip">IP</option>
+      <option value="domain">Domain</option>
+      <option value="title">Title</option>
+      <option value="port">Port</option>
+      <option value="request">Request</option>
+    </select>
+    <input class="fValue" placeholder="value">
+  </div>
+</div>
+
+<button onclick="addFilter()">+ Add Filter</button>
+
+<div id="resultCount">Waiting for data…</div>
+<button onclick="searchData()">Search</button>
+
+<div>
+Show
+<select id="pageSize" onchange="changePageSize()">
+  <option value="100">100</option>
+  <option value="500">500</option>
+  <option value="1000">1000</option>
+</select>
+records
+<button onclick="prevPage()">◀</button>
+<button onclick="nextPage()">▶</button>
+</div>
+
+<table>
+<thead>
+<tr><th>#</th><th>IP</th><th>Title</th><th>Domain</th><th>Port</th><th>Request</th></tr>
+</thead>
+<tbody id="tableBody"></tbody>
+</table>
+
+<script>
+let INDEX=[], LAST_RESULTS=[], currentPage=1, pageSize=100, TOTAL=0;
+
+function addFilter(){
+  const div=document.createElement("div");
+  div.className="filterRow";
+  div.innerHTML=`
+    <select class="fType">
+      <option value="ip">IP</option>
+      <option value="domain">Domain</option>
+      <option value="title">Title</option>
+      <option value="port">Port</option>
+      <option value="request">Request</option>
+    </select>
+    <input class="fValue" placeholder="value">
+    <button onclick="this.parentElement.remove()">❌</button>
+  `;
+  document.getElementById("filters").appendChild(div);
+}
+
+function loadJSON(){
+  const file=jsonFile.files[0];
+  if(!file) return alert("Select file");
+  INDEX=[]; TOTAL=0;
+  const url=URL.createObjectURL(file);
+
+  oboe(url).node("!.*", rec=>{
+    parse(rec.http_responseForIP);
+    parse(rec.https_responseForIP);
+    parse(rec.http_responseForDomainName);
+    parse(rec.https_responseForDomainName);
+    TOTAL++;
+    if(TOTAL%5000===0) resultCount.textContent=`Indexed ${TOTAL.toLocaleString()}`;
+  }).done(()=>resultCount.textContent=`Ready: ${INDEX.length.toLocaleString()} assets`);
+}
+
+function parse(b){
+  if(!b) return;
+  if(Array.isArray(b)) b.forEach(x=>add(x));
+  else add(b);
+}
+
+function add(r){
+  INDEX.push({
+    ip:(r.ip||"").toLowerCase(),
+    title:(r.title||"").toLowerCase(),
+    domain:(r.domain||"").toLowerCase(),
+    port:(r.port||"")+"",
+    request:(r.request||"").toLowerCase()
+  });
+}
+
+function searchData(){
+  LAST_RESULTS=[];
+  currentPage=1;
+  const types=document.querySelectorAll(".fType");
+  const values=document.querySelectorAll(".fValue");
+
+  for(let r of INDEX){
+    let ok=true;
+    for(let i=0;i<types.length;i++){
+      if(!r[types[i].value].includes(values[i].value.toLowerCase())){
+        ok=false; break;
+      }
+    }
+    if(ok) LAST_RESULTS.push(r);
+  }
+  render();
+}
+
+function render(){
+  const tbody=tableBody;
+  tbody.innerHTML="";
+  const start=(currentPage-1)*pageSize;
+  const slice=LAST_RESULTS.slice(start,start+pageSize);
+  slice.forEach((r,i)=>{
+    tbody.innerHTML+=`<tr>
+    <td>${start+i+1}</td><td>${r.ip}</td><td>${r.title}</td>
+    <td>${r.domain}</td><td>${r.port}</td><td>${r.request}</td></tr>`;
+  });
+  resultCount.textContent=`Matches: ${LAST_RESULTS.length.toLocaleString()} | Page ${currentPage}`;
+}
+
+function nextPage(){ if(currentPage*pageSize<LAST_RESULTS.length){currentPage++;render();}}
+function prevPage(){ if(currentPage>1){currentPage--;render();}}
+function changePageSize(){ pageSize=parseInt(pageSize.value);currentPage=1;render();}
+</script>
+
+</body>
+</html>
